@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notificación de Teléfono</title>
+    <!-- Incluye Tailwind CSS para estilos rápidos y responsivos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Define una fuente personalizada si es necesario, si no, se usará Inter por defecto */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Estilo para un modal de mensaje simple en lugar de alert() */
+        .message-modal {
+            display: none; /* Oculto por defecto */
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+            justify-content: center;
+            align-items: center;
+        }
+        .message-modal-content {
+            background-color: #fefefe;
+            margin: auto;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 80%;
+            max-width: 400px;
+            text-align: center;
+            position: relative;
+        }
+        .message-modal-close {
+            color: #aaa;
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .message-modal-close:hover,
+        .message-modal-close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-indigo-500 to-purple-600 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white p-8 rounded-xl shadow-2xl max-w-md w-full text-center transform transition-all duration-300 hover:scale-105">
+        <h1 class="text-4xl font-extrabold text-gray-800 mb-6 tracking-tight">
+            Notificación de Teléfono 📱
+        </h1>
+        <p class="text-gray-600 mb-8 text-lg">
+            Presiona el botón para iniciar o detener la notificación sonora cada 5 segundos.
+        </p>
+
+        <button id="toggleButton" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-full shadow-lg transition duration-300 ease-in-out transform hover:-translate-y-1 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-purple-300">
+            Iniciar Sonido
+        </button>
+
+        <p id="statusMessage" class="mt-8 text-lg font-semibold text-gray-700">
+            Estado: Inactivo
+        </p>
+    </div>
+
+    <!-- Modal de mensaje personalizado -->
+    <div id="messageModal" class="message-modal">
+        <div class="message-modal-content">
+            <span class="message-modal-close" id="closeModalBtn">&times;</span>
+            <p id="modalMessage" class="text-lg font-medium text-gray-800"></p>
+            <button id="modalOkBtn" class="mt-4 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-300">
+                Aceptar
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Inicializa Firebase si es necesario. Para esta app no se necesita, pero se incluye la estructura
+        // para futuros desarrollos o si se requiere persistencia de datos.
+        let db; // Referencia a Firestore
+        let auth; // Referencia a Auth
+        let userId; // ID del usuario actual
+
+        // Función para mostrar un mensaje en el modal personalizado
+        function showMessage(message) {
+            const modal = document.getElementById('messageModal');
+            const modalMessage = document.getElementById('modalMessage');
+            modalMessage.textContent = message;
+            modal.style.display = 'flex'; // Muestra el modal
+        }
+
+        // Obtiene referencias a los elementos del DOM
+        const toggleButton = document.getElementById('toggleButton');
+        const statusMessage = document.getElementById('statusMessage');
+        const messageModal = document.getElementById('messageModal');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const modalOkBtn = document.getElementById('modalOkBtn');
+
+        let audioContext;
+        let intervalId = null;
+        let isSoundActive = false;
+
+        // Función para crear y reproducir un breve sonido de "beep"
+        function playBeep() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            // Crea un oscilador
+            const oscillator = audioContext.createOscillator();
+            oscillator.type = 'sine'; // Tipo de onda: 'sine', 'square', 'sawtooth', 'triangle'
+            oscillator.frequency.setValueAtTime(880, audioContext.currentTime); // Frecuencia de la nota (A5)
+
+            // Crea un nodo de ganancia para controlar el volumen
+            const gainNode = audioContext.createGain();
+            gainNode.gain.setValueAtTime(0.5, audioContext.currentTime); // Volumen inicial
+
+            // Conecta el oscilador al nodo de ganancia y este al destino (altavoces)
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            // Inicia el oscilador
+            oscillator.start();
+
+            // Detiene el sonido después de un breve período (por ejemplo, 0.1 segundos)
+            oscillator.stop(audioContext.currentTime + 0.1);
+        }
+
+        // Función para iniciar el sonido de notificación
+        function startSound() {
+            if (!isSoundActive) {
+                // Reproduce el sonido inmediatamente al iniciar
+                playBeep();
+                intervalId = setInterval(playBeep, 5000); // Repite cada 5 segundos
+                isSoundActive = true;
+                toggleButton.textContent = 'Detener Sonido';
+                statusMessage.textContent = 'Estado: Sonido activo cada 5 segundos';
+                showMessage('¡Notificaciones activadas!');
+            }
+        }
+
+        // Función para detener el sonido de notificación
+        function stopSound() {
+            if (isSoundActive) {
+                clearInterval(intervalId);
+                intervalId = null;
+                isSoundActive = false;
+                toggleButton.textContent = 'Iniciar Sonido';
+                statusMessage.textContent = 'Estado: Inactivo';
+                showMessage('¡Notificaciones detenidas!');
+            }
+        }
+
+        // Agrega el evento de clic al botón para alternar el sonido
+        toggleButton.addEventListener('click', () => {
+            if (isSoundActive) {
+                stopSound();
+            } else {
+                startSound();
+            }
+        });
+
+        // Event listeners para cerrar el modal
+        closeModalBtn.addEventListener('click', () => {
+            messageModal.style.display = 'none';
+        });
+
+        modalOkBtn.addEventListener('click', () => {
+            messageModal.style.display = 'none';
+        });
+
+        // Cierra el modal si se hace clic fuera de su contenido
+        window.addEventListener('click', (event) => {
+            if (event.target == messageModal) {
+                messageModal.style.display = 'none';
+            }
+        });
+
+        // Función para inicializar Firebase (sin persistencia de datos para esta app)
+        async function initializeFirebase() {
+            try {
+                // Verificar si __firebase_config y __app_id están definidos
+                const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+                if (firebaseConfig) {
+                    const { initializeApp } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js");
+                    const { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
+                    const { getFirestore } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+
+                    const app = initializeApp(firebaseConfig);
+                    db = getFirestore(app);
+                    auth = getAuth(app);
+
+                    // Autenticación anónima o con token si está disponible
+                    if (typeof __initial_auth_token !== 'undefined') {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+
+                    onAuthStateChanged(auth, (user) => {
+                        if (user) {
+                            userId = user.uid; // ID de usuario autenticado
+                            console.log("Firebase autenticado. User ID:", userId);
+                        } else {
+                            userId = crypto.randomUUID(); // ID de usuario aleatorio si no está autenticado
+                            console.log("Firebase no autenticado. User ID aleatorio:", userId);
+                        }
+                    });
+                } else {
+                    console.warn("Configuración de Firebase no disponible. La aplicación funcionará sin Firebase.");
+                    userId = crypto.randomUUID(); // Asegura que siempre haya un userId
+                }
+            } catch (error) {
+                console.error("Error al inicializar Firebase:", error);
+                userId = crypto.randomUUID(); // Asegura que siempre haya un userId incluso con errores
+            }
+        }
+
+        // Inicializa Firebase al cargar la ventana
+        window.onload = initializeFirebase;
+
+    </script>
+</body>
+</html>
